@@ -1,0 +1,418 @@
+Parameters:
+  Stage:
+    Type: String
+    Default: prod
+
+Outputs:
+  ApiGatewayUrl:
+    Description: "URL of the API Gateway"
+    Value:
+      Fn::Sub:
+        - "https://${RestApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+        - RestApiGateway: !Ref RestApiGateway
+
+Resources:
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: b00948857-term-project
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+  
+  S3BucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action:
+              - 's3:GetObject'
+              - 's3:PutObject'
+            Resource:
+              Fn::Sub: "arn:aws:s3:::${S3Bucket}/*"
+
+  DynamoDbTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions: 
+        - 
+          AttributeName: "user-id"
+          AttributeType: "N"
+      KeySchema: 
+        - 
+          AttributeName: "user-id"
+          KeyType: "HASH"
+      ProvisionedThroughput: 
+        ReadCapacityUnits: "5"
+        WriteCapacityUnits: "5"
+      TableName: "photo-upload-table"
+
+  ImageUploadHandler:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: arn:aws:iam::514317883248:role/LabRole
+      Code:
+        S3Bucket: b00948857-code-bucket
+        S3Key: imageUploadHandler.zip
+      Runtime: nodejs16.x
+      Timeout: 5
+      TracingConfig:
+        Mode: Active
+
+  GetImagesForUser:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: arn:aws:iam::514317883248:role/LabRole
+      Code:
+        S3Bucket: b00948857-code-bucket
+        S3Key: getImagesForUser.zip
+      Runtime: nodejs16.x
+      Timeout: 5
+      TracingConfig:
+        Mode: Active
+      
+  UserRegistration:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: arn:aws:iam::514317883248:role/LabRole
+      Code:
+        S3Bucket: b00948857-code-bucket
+        S3Key: userRegistration.zip
+      Runtime: nodejs16.x
+      Timeout: 5
+      TracingConfig:
+        Mode: Active
+
+  UserLogin:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: arn:aws:iam::514317883248:role/LabRole
+      Code:
+        S3Bucket: b00948857-code-bucket
+        S3Key: userLogin.zip
+      Runtime: nodejs16.x
+      Timeout: 5
+      TracingConfig:
+        Mode: Active
+
+  RestApiGateway:
+    DependsOn: ImageUploadHandler
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Description: A test API
+      Name: UploadImageApi
+      Parameters:
+        endpointConfigurationTypes: REGIONAL      
+
+  UploadImageRestApiResource:
+    DependsOn: RestApiGateway
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref RestApiGateway
+      ParentId: !GetAtt RestApiGateway.RootResourceId
+      PathPart: uploadImage
+
+  UploadImageRestApiMethod:
+    DependsOn: UploadImageRestApiResource
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref RestApiGateway
+      ResourceId: !Ref UploadImageRestApiResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+              - StatusCode: 200
+        Credentials: arn:aws:iam::514317883248:role/LabRole
+        Uri: !Sub >-
+          arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${ImageUploadHandler.Arn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+
+  UploadImageRestApiMockMethod:
+    DependsOn: UploadImageRestApiResource
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref RestApiGateway
+      ResourceId: !Ref UploadImageRestApiResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+              - StatusCode: 200
+                ResponseParameters:
+                  method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                  method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+                  method.response.header.Access-Control-Allow-Origin: "'*'"
+                ResponseTemplates:
+                  application/json: ''
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Credentials: arn:aws:iam::514317883248:role/LabRole
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: 'Empty'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: false
+            method.response.header.Access-Control-Allow-Methods: false
+            method.response.header.Access-Control-Allow-Origin: false
+  
+  GetImagesForUserRestApiResource:
+    DependsOn: RestApiGateway
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref RestApiGateway
+      ParentId: !GetAtt RestApiGateway.RootResourceId
+      PathPart: getImage
+
+  GetImagesForUserRestApiMethod:
+    DependsOn: GetImagesForUserRestApiResource
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref RestApiGateway
+      ResourceId: !Ref GetImagesForUserRestApiResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+              - StatusCode: 200
+        Credentials: arn:aws:iam::514317883248:role/LabRole
+        Uri: !Sub >-
+          arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${GetImagesForUser.Arn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+
+
+  GetImagesForUserRestApiMockMethod:
+    DependsOn: GetImagesForUserRestApiResource
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref RestApiGateway
+      ResourceId: !Ref GetImagesForUserRestApiResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+              - StatusCode: 200
+                ResponseParameters:
+                  method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                  method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+                  method.response.header.Access-Control-Allow-Origin: "'*'"
+                ResponseTemplates:
+                  application/json: ''
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Credentials: arn:aws:iam::514317883248:role/LabRole
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: 'Empty'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: false
+            method.response.header.Access-Control-Allow-Methods: false
+            method.response.header.Access-Control-Allow-Origin: false
+
+  UserRegistrationRestApiResource:
+    DependsOn: RestApiGateway
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref RestApiGateway
+      ParentId: !GetAtt RestApiGateway.RootResourceId
+      PathPart: userRegistration
+
+  UserRegistrationRestApiMethod:
+    DependsOn: UserRegistrationRestApiResource
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref RestApiGateway
+      ResourceId: !Ref UserRegistrationRestApiResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+              - StatusCode: 200
+        Credentials: arn:aws:iam::514317883248:role/LabRole
+        Uri: !Sub >-
+          arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${UserRegistration.Arn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+
+  UserRegistrationRestApiMockMethod:
+    DependsOn: UserRegistrationRestApiResource
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref RestApiGateway
+      ResourceId: !Ref UserRegistrationRestApiResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+              - StatusCode: 200
+                ResponseParameters:
+                  method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                  method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+                  method.response.header.Access-Control-Allow-Origin: "'*'"
+                ResponseTemplates:
+                  application/json: ''
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Credentials: arn:aws:iam::514317883248:role/LabRole
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: 'Empty'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: false
+            method.response.header.Access-Control-Allow-Methods: false
+            method.response.header.Access-Control-Allow-Origin: false
+
+
+  UserLoginRestApiResource:
+    DependsOn: RestApiGateway
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref RestApiGateway
+      ParentId: !GetAtt RestApiGateway.RootResourceId
+      PathPart: userLogin
+
+  UserLoginRestApiMethod:
+    DependsOn: UserLoginRestApiResource
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref RestApiGateway
+      ResourceId: !Ref UserLoginRestApiResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+              - StatusCode: 200
+        Credentials: arn:aws:iam::514317883248:role/LabRole
+        Uri: !Sub >-
+          arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${UserLogin.Arn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+
+  UserLoginRestApiMockMethod:
+    DependsOn: UserLoginRestApiResource
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref RestApiGateway
+      ResourceId: !Ref UserLoginRestApiResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+              - StatusCode: 200
+                ResponseParameters:
+                  method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                  method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+                  method.response.header.Access-Control-Allow-Origin: "'*'"
+                ResponseTemplates:
+                  application/json: ''
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Credentials: arn:aws:iam::514317883248:role/LabRole
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: 'Empty'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: false
+            method.response.header.Access-Control-Allow-Methods: false
+            method.response.header.Access-Control-Allow-Origin: false
+  
+  Deployment:
+    DependsOn: UploadImageRestApiMethod
+    Type: 'AWS::ApiGateway::Deployment'
+    Properties:
+      RestApiId: !Ref RestApiGateway
+      Description: My deployment
+      StageName: !Ref Stage
+
+  MyApiGatewayUrlParameter:
+    DependsOn: RestApiGateway
+    Type: 'AWS::SSM::Parameter'
+    Properties:
+      Name: /MyApp/ApiGatewayUrl
+      Type: String
+      Value: !Sub "https://${RestApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+
+  MyElasticBeanstalkApplication:
+    Type: AWS::ElasticBeanstalk::Application
+    Properties:
+      ApplicationName: PhotosApp
+      Description : Photos App
+
+  MyElasticBeanstalkAppVersion:
+    Type: AWS::ElasticBeanstalk::ApplicationVersion
+    Properties:
+      ApplicationName: !Ref MyElasticBeanstalkApplication
+      SourceBundle:
+        S3Bucket: b00948857-code-bucket
+        S3Key: frontend.zip
+
+  MyElasticBeanstalkConfigurationTemplate:
+    Type: AWS::ElasticBeanstalk::ConfigurationTemplate
+    Properties:
+      ApplicationName:
+        Ref: MyElasticBeanstalkApplication
+      Description: Web access to Node.JS Application
+      SolutionStackName: "64bit Amazon Linux 2 v5.8.8 running Node.js 18"
+      OptionSettings:
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: "EC2KeyName"
+          Value: "vockey"
+
+  MyElasticBeanstalkEnvironment:
+    Type: AWS::ElasticBeanstalk::Environment
+    Properties:
+      ApplicationName: !Ref MyElasticBeanstalkApplication
+      TemplateName: !Ref MyElasticBeanstalkConfigurationTemplate
+      VersionLabel: !Ref MyElasticBeanstalkAppVersion
+      SolutionStackName: '64bit Amazon Linux 2 v5.8.8 running Node.js 18'
+      EnvironmentName: testenvironment
+      OperationsRole: arn:aws:iam::514317883248:role/LabRole
+      OptionSettings:
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: IamInstanceProfile
+          Value: LabInstanceProfile
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: SecurityGroups
+          Value: launch-wizard-1
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: REACT_APP_API_GATEWAY_URL
+          Value:
+            Fn::Sub:
+            - "https://${RestApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+            - RestApiGateway: !Ref RestApiGateway

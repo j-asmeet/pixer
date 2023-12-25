@@ -1,0 +1,574 @@
+Resources:
+  PixerBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: 'pixer-bucketb00930022'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+  MyBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref PixerBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action:
+              - 's3:GetObject'
+              - 's3:PutObject'
+            Resource:
+              Fn::Sub: "arn:aws:s3:::${PixerBucket}/*"
+
+  UserDetailsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: 'userDetails'
+      AttributeDefinitions: 
+        - 
+          AttributeName: "email"
+          AttributeType: "S"
+        - 
+          AttributeName: "password"
+          AttributeType: "S"
+      KeySchema: 
+        - 
+          AttributeName: "email"
+          KeyType: "HASH"
+        - 
+          AttributeName: "password"
+          KeyType: "RANGE"
+      ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5      
+
+  galleryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: 'gallery'
+      AttributeDefinitions: 
+        - 
+          AttributeName: "email"
+          AttributeType: "S"
+        - 
+          AttributeName: "imageURL"
+          AttributeType: "S"
+      KeySchema: 
+        - 
+          AttributeName: "email"
+          KeyType: "HASH"
+        - 
+          AttributeName: "imageURL"
+          KeyType: "RANGE"
+      ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5  
+
+  createAccount: 
+    Type: "AWS::Lambda::Function"
+    Properties: 
+      FunctionName: "createAccount"
+      Handler: "index.handler"
+      Role: "arn:aws:iam::713740672371:role/LabRole"
+      Code:
+        S3Bucket: "cloud-code-b00930022"
+        S3Key: "createAccount.zip"
+      Runtime: "nodejs16.x"
+      Timeout: 30
+      TracingConfig: 
+        Mode: "Active"
+  
+  getLoginDetails: 
+    Type: "AWS::Lambda::Function"
+    Properties: 
+      FunctionName: "getLoginDetails"
+      Handler: "index.handler"
+      Role: "arn:aws:iam::713740672371:role/LabRole"
+      Code:
+        S3Bucket: "cloud-code-b00930022"
+        S3Key: "getLoginDetails.zip"
+      Runtime: "nodejs16.x"
+      Timeout: 30
+      TracingConfig: 
+        Mode: "Active"
+
+  gallery: 
+    Type: "AWS::Lambda::Function"
+    Properties: 
+      FunctionName: "gallery"
+      Handler: "index.handler"
+      Role: "arn:aws:iam::713740672371:role/LabRole"
+      Code:
+        S3Bucket: "cloud-code-b00930022"
+        S3Key: "gallery.zip"
+      Runtime: "nodejs16.x"
+      Timeout: 30
+      TracingConfig: 
+        Mode: "Active"
+
+  imageUpload: 
+    Type: "AWS::Lambda::Function"
+    Properties: 
+      FunctionName: "imageUpload"
+      Handler: "index.handler"
+      Role: "arn:aws:iam::713740672371:role/LabRole"
+      Code:
+        S3Bucket: "cloud-code-b00930022"
+        S3Key: "imageUpload.zip"
+      Runtime: "nodejs16.x"
+      Timeout: 30
+      TracingConfig: 
+        Mode: "Active"
+
+  sns: 
+    Type: "AWS::Lambda::Function"
+    Properties: 
+      FunctionName: "sendEmail"
+      Handler: "index.handler"
+      Role: "arn:aws:iam::713740672371:role/LabRole"
+      Code:
+        S3Bucket: "cloud-code-b00930022"
+        S3Key: "sns.zip"
+      Runtime: "nodejs16.x"
+      Timeout: 30
+      TracingConfig: 
+        Mode: "Active"
+
+  userDetailsApi:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Name: pixer
+      Description: Store User signup details
+    DependsOn:
+      - createAccount
+
+  userDetailsResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      ParentId: !GetAtt userDetailsApi.RootResourceId
+      PathPart: 'userDetails'
+
+  userDetailsMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      HttpMethod: POST
+      ResourceId: !Ref userDetailsResource
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: 200
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+          - StatusCode: 200
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${createAccount.Arn}/invocations
+          - LambdaFuncArn: !GetAtt createAccount.Arn
+    DependsOn:
+      - userDetailsResource
+
+  userDetailsMockMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      ResourceId: !Ref userDetailsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+              "method.response.header.Access-Control-Allow-Methods": "'GET,POST,PUT,DELETE'"
+              "method.response.header.Access-Control-Allow-Origin": "'*'"
+            ResponseTemplates:
+              "application/json": ""
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          "application/json": '{"statusCode": 200}'
+        Type: MOCK
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            "method.response.header.Access-Control-Allow-Headers": true
+            "method.response.header.Access-Control-Allow-Methods": true
+            "method.response.header.Access-Control-Allow-Origin": true
+          ResponseModels:
+            "application/json": "Empty"
+
+  userDetailsDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: userDetailsMethod
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      Description: UserDetails deployment on Dev
+      StageName: Dev
+
+  userDetailsGatewayPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !GetAtt createAccount.Arn
+      Principal: apigateway.amazonaws.com
+    DependsOn:
+      - userDetailsDeployment
+
+####
+
+  loginResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      ParentId: !GetAtt userDetailsApi.RootResourceId
+      PathPart: 'login'
+
+  loginMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      HttpMethod: POST
+      ResourceId: !Ref loginResource
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: 200
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+          - StatusCode: 200
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${getLoginDetails.Arn}/invocations
+          - LambdaFuncArn: !GetAtt getLoginDetails.Arn
+    DependsOn:
+      - loginResource
+
+  loginMockMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      ResourceId: !Ref loginResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+              "method.response.header.Access-Control-Allow-Methods": "'GET,POST,PUT,DELETE'"
+              "method.response.header.Access-Control-Allow-Origin": "'*'"
+            ResponseTemplates:
+              "application/json": ""
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          "application/json": '{"statusCode": 200}'
+        Type: MOCK
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            "method.response.header.Access-Control-Allow-Headers": true
+            "method.response.header.Access-Control-Allow-Methods": true
+            "method.response.header.Access-Control-Allow-Origin": true
+          ResponseModels:
+            "application/json": "Empty"
+
+  loginDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: loginMethod
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      Description: login api deployment on Dev
+      StageName: Dev
+
+  loginGatewayPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !GetAtt getLoginDetails.Arn
+      Principal: apigateway.amazonaws.com
+    DependsOn:
+      - loginDeployment
+
+  ###
+
+  galleryResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      ParentId: !GetAtt userDetailsApi.RootResourceId
+      PathPart: 'gallery'
+
+  galleryMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      HttpMethod: POST
+      ResourceId: !Ref galleryResource
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: 200
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+          - StatusCode: 200
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${gallery.Arn}/invocations
+          - LambdaFuncArn: !GetAtt gallery.Arn
+    DependsOn:
+      - galleryResource
+
+  galleryMockMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      ResourceId: !Ref galleryResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+              "method.response.header.Access-Control-Allow-Methods": "'GET,POST,PUT,DELETE'"
+              "method.response.header.Access-Control-Allow-Origin": "'*'"
+            ResponseTemplates:
+              "application/json": ""
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          "application/json": '{"statusCode": 200}'
+        Type: MOCK
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            "method.response.header.Access-Control-Allow-Headers": true
+            "method.response.header.Access-Control-Allow-Methods": true
+            "method.response.header.Access-Control-Allow-Origin": true
+          ResponseModels:
+            "application/json": "Empty"
+
+  galleryDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: galleryMethod
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      Description: gallery api deployment on Dev
+      StageName: Dev
+
+  galleryGatewayPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !GetAtt gallery.Arn
+      Principal: apigateway.amazonaws.com
+    DependsOn:
+      - galleryDeployment
+
+######
+
+  imageUploadResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      ParentId: !GetAtt userDetailsApi.RootResourceId
+      PathPart: 'imageUpload'
+
+  imageUploadMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      HttpMethod: ANY
+      ResourceId: !Ref imageUploadResource
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: 200
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Credentials: arn:aws:iam::713740672371:role/LabRole
+        IntegrationResponses:
+          - StatusCode: 200
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${imageUpload.Arn}/invocations
+          - LambdaFuncArn: !GetAtt imageUpload.Arn
+      MethodResponses:
+        - StatusCode: 200
+    DependsOn:
+      - imageUploadResource
+
+  imageUploadMockMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      ResourceId: !Ref imageUploadResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+              - StatusCode: 200
+                ResponseParameters:
+                  method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                  method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+                  method.response.header.Access-Control-Allow-Origin: "'*'"
+                ResponseTemplates:
+                  application/json: ''
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Credentials: arn:aws:iam::713740672371:role/LabRole
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: 'Empty'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: false
+            method.response.header.Access-Control-Allow-Methods: false
+            method.response.header.Access-Control-Allow-Origin: false
+
+  imageUploadDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: imageUploadMethod
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      Description: imageUpload api deployment on Dev
+      StageName: Dev
+
+  imageUploadGatewayPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !GetAtt imageUpload.Arn
+      Principal: apigateway.amazonaws.com
+    DependsOn:
+      - imageUploadDeployment
+
+  snsResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      ParentId: !GetAtt userDetailsApi.RootResourceId
+      PathPart: 'sendEmail'
+
+  snsMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      HttpMethod: POST
+      ResourceId: !Ref snsResource
+      AuthorizationType: NONE
+      MethodResponses:
+        - StatusCode: 200
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+          - StatusCode: 200
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${sns.Arn}/invocations
+          - LambdaFuncArn: !GetAtt sns.Arn
+    DependsOn:
+      - snsResource
+
+  snsMockMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      ResourceId: !Ref snsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+              "method.response.header.Access-Control-Allow-Methods": "'GET,POST,PUT,DELETE'"
+              "method.response.header.Access-Control-Allow-Origin": "'*'"
+            ResponseTemplates:
+              "application/json": ""
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          "application/json": '{"statusCode": 200}'
+        Type: MOCK
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            "method.response.header.Access-Control-Allow-Headers": true
+            "method.response.header.Access-Control-Allow-Methods": true
+            "method.response.header.Access-Control-Allow-Origin": true
+          ResponseModels:
+            "application/json": "Empty"
+
+  snsDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: snsMethod
+    Properties:
+      RestApiId: !Ref userDetailsApi
+      Description: userDetailsApi deployment on Dev
+      StageName: Dev
+
+  snsGatewayPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !GetAtt sns.Arn
+      Principal: apigateway.amazonaws.com
+    DependsOn:
+      - snsDeployment
+
+  FrontendApplication:
+    Type: "AWS::ElasticBeanstalk::Application"
+    Properties:
+      ApplicationName: "userDetailsApi"
+      Description: "Application"
+
+  ApplicationVersion:
+    Type: "AWS::ElasticBeanstalk::ApplicationVersion"
+    Properties:
+      ApplicationName: !Ref FrontendApplication
+      Description: "Application Version"
+      SourceBundle:
+        S3Bucket: "cloud-code-b00930022"
+        S3Key: "pixer.zip"
+  FrontendEnvironment:
+    Type: "AWS::ElasticBeanstalk::Environment"
+    Properties:
+      ApplicationName: !Ref FrontendApplication
+      Description: "Environment"
+      EnvironmentName: "userDetailsApi"
+      SolutionStackName: "64bit Amazon Linux 2023 v6.0.3 running Node.js 18"
+      VersionLabel: !Ref ApplicationVersion
+      OperationsRole: "arn:aws:iam::713740672371:role/LabRole"
+      Tier:
+        Name: "WebServer"
+        Type: "Standard"
+      OptionSettings:
+        - Namespace: aws:ec2:instances
+          OptionName: InstanceTypes
+          Value: t3.medium
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: IamInstanceProfile
+          Value: LabInstanceProfile
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: SecurityGroups
+          Value: default
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: ServiceRole
+          Value: arn:aws:iam::713740672371:role/LabRole
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: REACT_APP_API_URL
+          Value:
+            Fn::Sub:
+            - "https://${userDetailsApi}.execute-api.${AWS::Region}.amazonaws.com"
+            - RestApiGateway: !Ref userDetailsApi
+
+Outputs:
+  ApplicationURL:
+    Description: "Application URL"
+    Value: !Join ["", ["http://", !GetAtt FrontendEnvironment.EndpointURL]]

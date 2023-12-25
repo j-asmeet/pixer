@@ -1,0 +1,45 @@
+Resources:
+  FrontendApplication:
+    Type: "AWS::ElasticBeanstalk::Application"
+    Properties:
+      ApplicationName: "MyHttpAPI"
+      Description: "Application"
+
+  ApplicationVersion:
+    Type: "AWS::ElasticBeanstalk::ApplicationVersion"
+    Properties:
+      ApplicationName: !Ref FrontendApplication
+      Description: "Application Version"
+      SourceBundle:
+        S3Bucket: "cloud-code-b00930022"
+        S3Key: "s3_fe.zip"
+  FrontendEnvironment:
+    Type: "AWS::ElasticBeanstalk::Environment"
+    Properties:
+      ApplicationName: !Ref FrontendApplication
+      Description: "Environment"
+      EnvironmentName: "MyHttpAPI"
+      SolutionStackName: "64bit Amazon Linux 2023 v6.0.3 running Node.js 18"
+      VersionLabel: !Ref ApplicationVersion
+      OperationsRole: "arn:aws:iam::713740672371:role/LabRole"
+      Tier:
+        Name: "WebServer"
+        Type: "Standard"
+      OptionSettings:
+        - Namespace: "aws:elasticbeanstalk:environment"
+          OptionName: EnvironmentType
+          Value: "SingleInstance"
+        - Namespace: "aws:elasticbeanstalk:environment"
+          OptionName: ServiceRole
+          Value: arn:aws:iam::713740672371:role/LabRole
+        - Namespace: "aws:autoscaling:launchconfiguration"
+          OptionName: "IamInstanceProfile"
+          Value: "LabInstanceProfile"
+        # - Namespace: "aws:elasticbeanstalk:application:environment"
+        #   OptionName: "REACT_APP_API_URL"
+        #   Value: !Sub "https://${MyHttpAPI}.execute-api.${AWS::Region}.amazonaws.com"
+
+Outputs:
+  ApplicationURL:
+    Description: "Application URL"
+    Value: !Join ["", ["http://", !GetAtt FrontendEnvironment.EndpointURL]]
